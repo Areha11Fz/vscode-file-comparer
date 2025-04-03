@@ -3,14 +3,53 @@ import * as vscode from 'vscode';
 let editor1: vscode.TextEditor | undefined;
 let editor2: vscode.TextEditor | undefined;
 let scrollSyncDisposable: vscode.Disposable | undefined;
-let diffDecorationType: vscode.TextEditorDecorationType | undefined; // Added
-let closeListenerDisposable: vscode.Disposable | undefined; // Added
+let diffDecorationType: vscode.TextEditorDecorationType | undefined;
+let closeListenerDisposable: vscode.Disposable | undefined;
+let textChangeListenerDisposable: vscode.Disposable | undefined; // Added for text change
+let saveListenerDisposable: vscode.Disposable | undefined; // Added for save
 
-// Define the decoration type for highlighting differences // Added
-const diffHighlightOptions: vscode.DecorationRenderOptions = { // Added
+// Define the decoration type for highlighting differences
+const diffHighlightOptions: vscode.DecorationRenderOptions = {
     backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background with some transparency // Added
-    isWholeLine: true, // Added
-}; // Added
+    isWholeLine: true,
+};
+
+// Function to perform the comparison and apply highlighting
+function updateDiffHighlighting() {
+    if (!editor1 || !editor2 || !diffDecorationType) {
+        return; // Ensure editors and decoration type are valid
+    }
+
+    const editor1Doc = editor1.document;
+    const editor2Doc = editor2.document;
+    const decorations1: vscode.Range[] = [];
+    const decorations2: vscode.Range[] = [];
+
+    const maxLines = Math.max(editor1Doc.lineCount, editor2Doc.lineCount);
+
+    for (let i = 0; i < maxLines; i++) {
+        const line1Text = i < editor1Doc.lineCount ? editor1Doc.lineAt(i).text : undefined;
+        const line2Text = i < editor2Doc.lineCount ? editor2Doc.lineAt(i).text : undefined;
+
+        const firstWord1 = line1Text?.trim().split(/\s+/)[0];
+        const firstWord2 = line2Text?.trim().split(/\s+/)[0];
+
+        if (firstWord1 !== firstWord2) {
+            if (line1Text !== undefined) {
+                // Use full line range for decoration
+                decorations1.push(editor1Doc.lineAt(i).range);
+            }
+            if (line2Text !== undefined) {
+                 // Use full line range for decoration
+                decorations2.push(editor2Doc.lineAt(i).range);
+            }
+        }
+    }
+
+    editor1.setDecorations(diffDecorationType, decorations1);
+    editor2.setDecorations(diffDecorationType, decorations2);
+}
+
 
 class FileComparerViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
@@ -173,8 +212,20 @@ export function activate(context: vscode.ExtensionContext) {
                     closeListenerDisposable.dispose();
                     closeListenerDisposable = undefined;
                 }
+                 // Dispose previous text change listener
+                if (textChangeListenerDisposable) {
+                    textChangeListenerDisposable.dispose();
+                    textChangeListenerDisposable = undefined;
+                }
+                 // Dispose previous save listener
+                if (saveListenerDisposable) {
+                    saveListenerDisposable.dispose();
+                    saveListenerDisposable = undefined;
+                }
+
+                // Clear previous decorations and ensure type exists
                 if (diffDecorationType) {
-                    editor1?.setDecorations(diffDecorationType, []); // Clear previous decorations
+                    editor1?.setDecorations(diffDecorationType, []);
                     editor2?.setDecorations(diffDecorationType, []);
                 } else {
                     // Ensure decoration type is created if it wasn't already
@@ -183,38 +234,13 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
 
-                // Add scroll synchronization and diff highlighting
-                if (editor1 && editor2 && diffDecorationType) { // Ensure decoration type exists
-                    const editor1Doc = editor1.document;
-                    const editor2Doc = editor2.document;
-                    const decorations1: vscode.Range[] = [];
-                    const decorations2: vscode.Range[] = [];
+                // Add scroll synchronization and initial diff highlighting
+                if (editor1 && editor2 && diffDecorationType) {
+                    // Initial highlighting
+                    updateDiffHighlighting();
 
-                    const maxLines = Math.max(editor1Doc.lineCount, editor2Doc.lineCount);
-
-                    for (let i = 0; i < maxLines; i++) {
-                        const line1Text = i < editor1Doc.lineCount ? editor1Doc.lineAt(i).text : undefined;
-                        const line2Text = i < editor2Doc.lineCount ? editor2Doc.lineAt(i).text : undefined;
-
-                        const firstWord1 = line1Text?.trim().split(/\s+/)[0];
-                        const firstWord2 = line2Text?.trim().split(/\s+/)[0];
-
-                        if (firstWord1 !== firstWord2) {
-                            if (line1Text !== undefined) {
-                                decorations1.push(new vscode.Range(i, 0, i, line1Text.length));
-                            }
-                            if (line2Text !== undefined) {
-                                decorations2.push(new vscode.Range(i, 0, i, line2Text.length));
-                            }
-                        }
-                    }
-
-                    editor1.setDecorations(diffDecorationType, decorations1);
-                    editor2.setDecorations(diffDecorationType, decorations2);
-
-
-                    // Scroll Sync Logic (moved slightly down)
-                    let scrollingSelf = false; // Flag to prevent infinite loops
+                    // Scroll Sync Logic
+                    let scrollingSelf = false;
 
                     const listener = vscode.window.onDidChangeTextEditorVisibleRanges(event => {
                         if (scrollingSelf) {
@@ -246,6 +272,17 @@ export function activate(context: vscode.ExtensionContext) {
                                 scrollSyncDisposable.dispose();
                                 scrollSyncDisposable = undefined;
                             }
+                             // Dispose text change listener
+                            if (textChangeListenerDisposable) {
+                                textChangeListenerDisposable.dispose();
+                                textChangeListenerDisposable = undefined;
+                            }
+                             // Dispose save listener
+                            if (saveListenerDisposable) {
+                                saveListenerDisposable.dispose();
+                                saveListenerDisposable = undefined;
+                            }
+
                             // Clear decorations on the remaining editor if it exists
                             if (diffDecorationType) {
                                 if (editor1StillVisible && editor1) editor1.setDecorations(diffDecorationType, []);
@@ -255,14 +292,32 @@ export function activate(context: vscode.ExtensionContext) {
                             editor1 = undefined;
                             editor2 = undefined;
 
-                            // Dispose this listener itself as it's no longer needed for this pair
+                            // Dispose this close listener itself
                             if (closeListenerDisposable) {
                                 closeListenerDisposable.dispose();
                                 closeListenerDisposable = undefined;
                             }
                         }
                     });
-                    context.subscriptions.push(closeListenerDisposable); // Add this listener too
+                    context.subscriptions.push(closeListenerDisposable);
+
+                    // Add listener for text document changes
+                    textChangeListenerDisposable = vscode.workspace.onDidChangeTextDocument(event => {
+                        if (editor1 && event.document === editor1.document || editor2 && event.document === editor2.document) {
+                            // Add a small delay to avoid excessive updates while typing rapidly
+                            // This is a simple debounce mechanism
+                            setTimeout(updateDiffHighlighting, 150); 
+                        }
+                    });
+                    context.subscriptions.push(textChangeListenerDisposable);
+
+                    // Add listener for document saves
+                    saveListenerDisposable = vscode.workspace.onDidSaveTextDocument(document => {
+                         if (editor1 && document === editor1.document || editor2 && document === editor2.document) {
+                            updateDiffHighlighting(); // Update immediately on save
+                        }
+                    });
+                    context.subscriptions.push(saveListenerDisposable);
                 }
             }
         })
@@ -275,10 +330,16 @@ export function deactivate() {
     if (scrollSyncDisposable) {
         scrollSyncDisposable.dispose();
     }
-    if (closeListenerDisposable) {
+    if (closeListenerDisposable) { // Dispose all listeners on deactivate
         closeListenerDisposable.dispose();
     }
-    if (diffDecorationType) {
+    if (textChangeListenerDisposable) {
+        textChangeListenerDisposable.dispose();
+    }
+    if (saveListenerDisposable) {
+        saveListenerDisposable.dispose();
+    }
+    if (diffDecorationType) { // Dispose decoration type
         diffDecorationType.dispose();
     }
 }
