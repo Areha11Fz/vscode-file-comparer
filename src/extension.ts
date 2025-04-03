@@ -3,6 +3,14 @@ import * as vscode from 'vscode';
 let editor1: vscode.TextEditor | undefined;
 let editor2: vscode.TextEditor | undefined;
 let scrollSyncDisposable: vscode.Disposable | undefined;
+let diffDecorationType: vscode.TextEditorDecorationType | undefined; // Added
+let closeListenerDisposable: vscode.Disposable | undefined; // Added
+
+// Define the decoration type for highlighting differences // Added
+const diffHighlightOptions: vscode.DecorationRenderOptions = { // Added
+    backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background with some transparency // Added
+    isWholeLine: true, // Added
+}; // Added
 
 class FileComparerViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
@@ -156,13 +164,56 @@ export function activate(context: vscode.ExtensionContext) {
                 editor1 = vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === doc1.uri.toString());
                 editor2 = vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === doc2.uri.toString());
 
-                // Dispose previous listener if exists
+                // Dispose previous listeners and clear decorations
                 if (scrollSyncDisposable) {
                     scrollSyncDisposable.dispose();
+                    scrollSyncDisposable = undefined;
+                }
+                if (closeListenerDisposable) {
+                    closeListenerDisposable.dispose();
+                    closeListenerDisposable = undefined;
+                }
+                if (diffDecorationType) {
+                    editor1?.setDecorations(diffDecorationType, []); // Clear previous decorations
+                    editor2?.setDecorations(diffDecorationType, []);
+                } else {
+                    // Ensure decoration type is created if it wasn't already
+                    diffDecorationType = vscode.window.createTextEditorDecorationType(diffHighlightOptions);
+                    context.subscriptions.push(diffDecorationType); // Add to subscriptions for disposal on deactivate
                 }
 
-                // Add scroll synchronization
-                if (editor1 && editor2) {
+
+                // Add scroll synchronization and diff highlighting
+                if (editor1 && editor2 && diffDecorationType) { // Ensure decoration type exists
+                    const editor1Doc = editor1.document;
+                    const editor2Doc = editor2.document;
+                    const decorations1: vscode.Range[] = [];
+                    const decorations2: vscode.Range[] = [];
+
+                    const maxLines = Math.max(editor1Doc.lineCount, editor2Doc.lineCount);
+
+                    for (let i = 0; i < maxLines; i++) {
+                        const line1Text = i < editor1Doc.lineCount ? editor1Doc.lineAt(i).text : undefined;
+                        const line2Text = i < editor2Doc.lineCount ? editor2Doc.lineAt(i).text : undefined;
+
+                        const firstWord1 = line1Text?.trim().split(/\s+/)[0];
+                        const firstWord2 = line2Text?.trim().split(/\s+/)[0];
+
+                        if (firstWord1 !== firstWord2) {
+                            if (line1Text !== undefined) {
+                                decorations1.push(new vscode.Range(i, 0, i, line1Text.length));
+                            }
+                            if (line2Text !== undefined) {
+                                decorations2.push(new vscode.Range(i, 0, i, line2Text.length));
+                            }
+                        }
+                    }
+
+                    editor1.setDecorations(diffDecorationType, decorations1);
+                    editor2.setDecorations(diffDecorationType, decorations2);
+
+
+                    // Scroll Sync Logic (moved slightly down)
                     let scrollingSelf = false; // Flag to prevent infinite loops
 
                     const listener = vscode.window.onDidChangeTextEditorVisibleRanges(event => {
@@ -182,25 +233,36 @@ export function activate(context: vscode.ExtensionContext) {
                     
                     // Store the disposable to remove the listener later
                     scrollSyncDisposable = listener;
-                    context.subscriptions.push(scrollSyncDisposable); 
+                    context.subscriptions.push(scrollSyncDisposable);
 
-                    // Also handle editor closure to clear references and listener
-                    const closeListener = vscode.window.onDidChangeVisibleTextEditors(editors => {
-                        const editor1Visible = editors.some(e => e === editor1);
-                        const editor2Visible = editors.some(e => e === editor2);
+                    // Also handle editor closure to clear references, listeners, and decorations
+                    closeListenerDisposable = vscode.window.onDidChangeVisibleTextEditors(editors => { // Assign to disposable
+                        const editor1StillVisible = editors.some(e => e === editor1);
+                        const editor2StillVisible = editors.some(e => e === editor2);
 
-                        if (!editor1Visible || !editor2Visible) {
+                        // If either editor is closed, clean up everything related to this comparison session
+                        if (!editor1StillVisible || !editor2StillVisible) {
                             if (scrollSyncDisposable) {
                                 scrollSyncDisposable.dispose();
                                 scrollSyncDisposable = undefined;
                             }
+                            // Clear decorations on the remaining editor if it exists
+                            if (diffDecorationType) {
+                                if (editor1StillVisible && editor1) editor1.setDecorations(diffDecorationType, []);
+                                if (editor2StillVisible && editor2) editor2.setDecorations(diffDecorationType, []);
+                            }
+
                             editor1 = undefined;
                             editor2 = undefined;
-                            // We might want to remove this listener itself if it's no longer needed
-                            // closeListener.dispose(); // Or manage its lifecycle differently
+
+                            // Dispose this listener itself as it's no longer needed for this pair
+                            if (closeListenerDisposable) {
+                                closeListenerDisposable.dispose();
+                                closeListenerDisposable = undefined;
+                            }
                         }
                     });
-                    context.subscriptions.push(closeListener); // Add this listener too
+                    context.subscriptions.push(closeListenerDisposable); // Add this listener too
                 }
             }
         })
@@ -208,4 +270,15 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+    // Dispose of listeners and decoration types if they exist
+    if (scrollSyncDisposable) {
+        scrollSyncDisposable.dispose();
+    }
+    if (closeListenerDisposable) {
+        closeListenerDisposable.dispose();
+    }
+    if (diffDecorationType) {
+        diffDecorationType.dispose();
+    }
+}
