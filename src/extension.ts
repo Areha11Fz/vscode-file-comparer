@@ -3,27 +3,44 @@ import * as vscode from 'vscode';
 let editor1: vscode.TextEditor | undefined;
 let editor2: vscode.TextEditor | undefined;
 let scrollSyncDisposable: vscode.Disposable | undefined;
-let diffDecorationType: vscode.TextEditorDecorationType | undefined;
+let redDecorationType: vscode.TextEditorDecorationType | undefined; // Renamed from diffDecorationType
+let yellowDecorationType: vscode.TextEditorDecorationType | undefined; // Added for yellow highlight
 let closeListenerDisposable: vscode.Disposable | undefined;
-let textChangeListenerDisposable: vscode.Disposable | undefined; // Added for text change
-let saveListenerDisposable: vscode.Disposable | undefined; // Added for save
+let textChangeListenerDisposable: vscode.Disposable | undefined;
+let saveListenerDisposable: vscode.Disposable | undefined;
 
-// Define the decoration type for highlighting differences
-const diffHighlightOptions: vscode.DecorationRenderOptions = {
-    backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background with some transparency // Added
+// Protobuf scalar types (add more if needed, e.g., fixed32, sfixed32, etc.)
+const protobufTypes = new Set([
+    'double', 'float', 'int32', 'int64', 'uint32', 'uint64',
+    'sint32', 'sint64', 'fixed32', 'fixed64', 'sfixed32', 'sfixed64',
+    'bool', 'string', 'bytes'
+]);
+
+// Define the decoration type for RED highlighting (completely different, non-type)
+const redHighlightOptions: vscode.DecorationRenderOptions = {
+    backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background
     isWholeLine: true,
 };
 
+// Define the decoration type for YELLOW highlighting (potential type mismatch) // Added
+const yellowHighlightOptions: vscode.DecorationRenderOptions = { // Added
+    backgroundColor: 'rgba(255, 255, 0, 0.3)', // Yellow background // Added
+    isWholeLine: true, // Added
+}; // Added
+
 // Function to perform the comparison and apply highlighting
 function updateDiffHighlighting() {
-    if (!editor1 || !editor2 || !diffDecorationType) {
-        return; // Ensure editors and decoration type are valid
+    // Ensure editors and decoration types are valid
+    if (!editor1 || !editor2 || !redDecorationType || !yellowDecorationType) {
+        return;
     }
 
     const editor1Doc = editor1.document;
     const editor2Doc = editor2.document;
-    const decorations1: vscode.Range[] = [];
-    const decorations2: vscode.Range[] = [];
+    const redDecorations1: vscode.Range[] = []; // For red highlights
+    const redDecorations2: vscode.Range[] = [];
+    const yellowDecorations1: vscode.Range[] = []; // For yellow highlights
+    const yellowDecorations2: vscode.Range[] = [];
 
     const maxLines = Math.max(editor1Doc.lineCount, editor2Doc.lineCount);
 
@@ -31,23 +48,31 @@ function updateDiffHighlighting() {
         const line1Text = i < editor1Doc.lineCount ? editor1Doc.lineAt(i).text : undefined;
         const line2Text = i < editor2Doc.lineCount ? editor2Doc.lineAt(i).text : undefined;
 
-        const firstWord1 = line1Text?.trim().split(/\s+/)[0];
-        const firstWord2 = line2Text?.trim().split(/\s+/)[0];
+        const firstWord1 = line1Text?.trim().split(/\s+/)[0] || ''; // Handle empty lines
+        const firstWord2 = line2Text?.trim().split(/\s+/)[0] || '';
 
         if (firstWord1 !== firstWord2) {
-            if (line1Text !== undefined) {
-                // Use full line range for decoration
-                decorations1.push(editor1Doc.lineAt(i).range);
-            }
-            if (line2Text !== undefined) {
-                 // Use full line range for decoration
-                decorations2.push(editor2Doc.lineAt(i).range);
+            const isType1 = protobufTypes.has(firstWord1);
+            const isType2 = protobufTypes.has(firstWord2);
+            const range1 = line1Text !== undefined ? editor1Doc.lineAt(i).range : undefined;
+            const range2 = line2Text !== undefined ? editor2Doc.lineAt(i).range : undefined;
+
+            // New Logic: Yellow ONLY if BOTH are NOT types. Red otherwise.
+            if (!isType1 && !isType2) { // Both are NOT protobuf types -> Yellow
+                if (range1) yellowDecorations1.push(range1);
+                if (range2) yellowDecorations2.push(range2);
+            } else { // At least one IS a protobuf type (or lines mismatch existence) -> Red
+                if (range1) redDecorations1.push(range1);
+                if (range2) redDecorations2.push(range2);
             }
         }
     }
 
-    editor1.setDecorations(diffDecorationType, decorations1);
-    editor2.setDecorations(diffDecorationType, decorations2);
+    // Apply decorations (clear previous of the specific type first)
+    editor1.setDecorations(redDecorationType, redDecorations1);
+    editor1.setDecorations(yellowDecorationType, yellowDecorations1);
+    editor2.setDecorations(redDecorationType, redDecorations2);
+    editor2.setDecorations(yellowDecorationType, yellowDecorations2);
 }
 
 
@@ -223,19 +248,25 @@ export function activate(context: vscode.ExtensionContext) {
                     saveListenerDisposable = undefined;
                 }
 
-                // Clear previous decorations and ensure type exists
-                if (diffDecorationType) {
-                    editor1?.setDecorations(diffDecorationType, []);
-                    editor2?.setDecorations(diffDecorationType, []);
+                // Clear previous decorations and ensure types exist
+                if (redDecorationType) {
+                    editor1?.setDecorations(redDecorationType, []);
+                    editor2?.setDecorations(redDecorationType, []);
                 } else {
-                    // Ensure decoration type is created if it wasn't already
-                    diffDecorationType = vscode.window.createTextEditorDecorationType(diffHighlightOptions);
-                    context.subscriptions.push(diffDecorationType); // Add to subscriptions for disposal on deactivate
+                    redDecorationType = vscode.window.createTextEditorDecorationType(redHighlightOptions);
+                    context.subscriptions.push(redDecorationType);
+                }
+                if (yellowDecorationType) {
+                    editor1?.setDecorations(yellowDecorationType, []);
+                    editor2?.setDecorations(yellowDecorationType, []);
+                } else {
+                    yellowDecorationType = vscode.window.createTextEditorDecorationType(yellowHighlightOptions);
+                    context.subscriptions.push(yellowDecorationType);
                 }
 
 
                 // Add scroll synchronization and initial diff highlighting
-                if (editor1 && editor2 && diffDecorationType) {
+                if (editor1 && editor2 && redDecorationType && yellowDecorationType) { // Ensure types exist
                     // Initial highlighting
                     updateDiffHighlighting();
 
@@ -284,12 +315,16 @@ export function activate(context: vscode.ExtensionContext) {
                             }
 
                             // Clear decorations on the remaining editor if it exists
-                            if (diffDecorationType) {
-                                if (editor1StillVisible && editor1) editor1.setDecorations(diffDecorationType, []);
-                                if (editor2StillVisible && editor2) editor2.setDecorations(diffDecorationType, []);
+                            if (redDecorationType) {
+                                if (editor1StillVisible && editor1) editor1.setDecorations(redDecorationType, []);
+                                if (editor2StillVisible && editor2) editor2.setDecorations(redDecorationType, []);
+                            }
+                            if (yellowDecorationType) {
+                                if (editor1StillVisible && editor1) editor1.setDecorations(yellowDecorationType, []);
+                                if (editor2StillVisible && editor2) editor2.setDecorations(yellowDecorationType, []);
                             }
 
-                            editor1 = undefined;
+                            editor1 = undefined; // Clear editor refs
                             editor2 = undefined;
 
                             // Dispose this close listener itself
@@ -339,7 +374,10 @@ export function deactivate() {
     if (saveListenerDisposable) {
         saveListenerDisposable.dispose();
     }
-    if (diffDecorationType) { // Dispose decoration type
-        diffDecorationType.dispose();
+    if (redDecorationType) { // Dispose decoration types
+        redDecorationType.dispose();
+    }
+    if (yellowDecorationType) {
+        yellowDecorationType.dispose();
     }
 }
