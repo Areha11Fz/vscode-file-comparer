@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 
+let editor1: vscode.TextEditor | undefined;
+let editor2: vscode.TextEditor | undefined;
+let scrollSyncDisposable: vscode.Disposable | undefined;
+
 class FileComparerViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _file1?: string;
@@ -136,9 +140,68 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('file-comparer.compareFiles', async () => {
             const { file1, file2 } = provider.getFiles();
             if (file1 && file2) {
-                const uri1 = vscode.Uri.file(file1);
-                const uri2 = vscode.Uri.file(file2);
-                await vscode.commands.executeCommand('vscode.diff', uri1, uri2);
+                // Open first file in the active editor group
+                const doc1 = await vscode.workspace.openTextDocument(file1);
+                await vscode.window.showTextDocument(doc1, vscode.ViewColumn.One);
+
+                // Open second file in the editor group to the right
+                const doc2 = await vscode.workspace.openTextDocument(file2);
+                await vscode.window.showTextDocument(doc2, { 
+                    viewColumn: vscode.ViewColumn.Beside,
+                    preserveFocus: false,
+                    preview: false // Ensure it opens as a real editor
+                });
+
+                // Store references to the editors
+                editor1 = vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === doc1.uri.toString());
+                editor2 = vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === doc2.uri.toString());
+
+                // Dispose previous listener if exists
+                if (scrollSyncDisposable) {
+                    scrollSyncDisposable.dispose();
+                }
+
+                // Add scroll synchronization
+                if (editor1 && editor2) {
+                    let scrollingSelf = false; // Flag to prevent infinite loops
+
+                    const listener = vscode.window.onDidChangeTextEditorVisibleRanges(event => {
+                        if (scrollingSelf) {
+                            scrollingSelf = false; // Reset flag after self-triggered scroll
+                            return;
+                        }
+
+                        if (event.textEditor === editor1 && editor2) {
+                            scrollingSelf = true; // Set flag before scrolling the other editor
+                            editor2.revealRange(event.visibleRanges[0], vscode.TextEditorRevealType.AtTop);
+                        } else if (event.textEditor === editor2 && editor1) {
+                            scrollingSelf = true; // Set flag before scrolling the other editor
+                            editor1.revealRange(event.visibleRanges[0], vscode.TextEditorRevealType.AtTop);
+                        }
+                    });
+                    
+                    // Store the disposable to remove the listener later
+                    scrollSyncDisposable = listener;
+                    context.subscriptions.push(scrollSyncDisposable); 
+
+                    // Also handle editor closure to clear references and listener
+                    const closeListener = vscode.window.onDidChangeVisibleTextEditors(editors => {
+                        const editor1Visible = editors.some(e => e === editor1);
+                        const editor2Visible = editors.some(e => e === editor2);
+
+                        if (!editor1Visible || !editor2Visible) {
+                            if (scrollSyncDisposable) {
+                                scrollSyncDisposable.dispose();
+                                scrollSyncDisposable = undefined;
+                            }
+                            editor1 = undefined;
+                            editor2 = undefined;
+                            // We might want to remove this listener itself if it's no longer needed
+                            // closeListener.dispose(); // Or manage its lifecycle differently
+                        }
+                    });
+                    context.subscriptions.push(closeListener); // Add this listener too
+                }
             }
         })
     );
