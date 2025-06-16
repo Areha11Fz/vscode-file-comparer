@@ -182,7 +182,7 @@ class FileComparerViewProvider implements vscode.WebviewViewProvider {
     }
 }
 
-let yellowDecorationEnabled: boolean = true;
+let yellowDecorationEnabled: boolean = false;
 
 export function activate(context: vscode.ExtensionContext) {
     const provider = new FileComparerViewProvider(context.extensionUri);
