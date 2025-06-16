@@ -8,6 +8,8 @@ let yellowDecorationType: vscode.TextEditorDecorationType | undefined; // Added 
 let closeListenerDisposable: vscode.Disposable | undefined;
 let textChangeListenerDisposable: vscode.Disposable | undefined;
 let saveListenerDisposable: vscode.Disposable | undefined;
+let hoverDecorationType: vscode.TextEditorDecorationType | undefined;
+let selectionChangeDisposable: vscode.Disposable | undefined;
 
 // Protobuf scalar types (add more if needed, e.g., fixed32, sfixed32, etc.)
 const protobufTypes = new Set([
@@ -30,6 +32,12 @@ const yellowHighlightOptions: vscode.DecorationRenderOptions = {
     isWholeLine: true,
     overviewRulerColor: 'rgba(255, 255, 0, 0.8)',
     overviewRulerLane: vscode.OverviewRulerLane.Center
+};
+
+// Hover highlight options
+const hoverHighlightOptions: vscode.DecorationRenderOptions = {
+    backgroundColor: 'rgba(100, 100, 100, 0.2)',
+    isWholeLine: true
 };
 
 // Function to perform the comparison and apply highlighting
@@ -272,6 +280,10 @@ export function activate(context: vscode.ExtensionContext) {
                     yellowDecorationType = vscode.window.createTextEditorDecorationType(yellowHighlightOptions);
                     context.subscriptions.push(yellowDecorationType);
                 }
+                if (!hoverDecorationType) {
+                    hoverDecorationType = vscode.window.createTextEditorDecorationType(hoverHighlightOptions);
+                    context.subscriptions.push(hoverDecorationType);
+                }
 
 
                 // Add scroll synchronization and initial diff highlighting
@@ -312,15 +324,20 @@ export function activate(context: vscode.ExtensionContext) {
                                 scrollSyncDisposable.dispose();
                                 scrollSyncDisposable = undefined;
                             }
-                             // Dispose text change listener
+                            // Dispose text change listener
                             if (textChangeListenerDisposable) {
                                 textChangeListenerDisposable.dispose();
                                 textChangeListenerDisposable = undefined;
                             }
-                             // Dispose save listener
+                            // Dispose save listener
                             if (saveListenerDisposable) {
                                 saveListenerDisposable.dispose();
                                 saveListenerDisposable = undefined;
+                            }
+                            // Dispose selection change listener
+                            if (selectionChangeDisposable) {
+                                selectionChangeDisposable.dispose();
+                                selectionChangeDisposable = undefined;
                             }
 
                             // Clear decorations on the remaining editor if it exists
@@ -331,6 +348,10 @@ export function activate(context: vscode.ExtensionContext) {
                             if (yellowDecorationType) {
                                 if (editor1StillVisible && editor1) editor1.setDecorations(yellowDecorationType, []);
                                 if (editor2StillVisible && editor2) editor2.setDecorations(yellowDecorationType, []);
+                            }
+                            if (hoverDecorationType) {
+                                editor1?.setDecorations(hoverDecorationType, []);
+                                editor2?.setDecorations(hoverDecorationType, []);
                             }
 
                             editor1 = undefined; // Clear editor refs
@@ -362,6 +383,34 @@ export function activate(context: vscode.ExtensionContext) {
                         }
                     });
                     context.subscriptions.push(saveListenerDisposable);
+
+                    // Selection change listener for showing line highlights
+                    selectionChangeDisposable = vscode.window.onDidChangeTextEditorSelection(event => {
+                        if (!editor1 || !editor2 || !hoverDecorationType) {
+                            return;
+                        }
+
+                        // Check if the selection change is in either of our compared editors
+                        if (event.textEditor !== editor1 && event.textEditor !== editor2) {
+                            return;
+                        }
+
+                        // Get the primary selection's active line
+                        const lineNumber = event.selections[0].active.line;
+
+                        // Apply hover highlight to both editors at the same line
+                        const range1 = editor1.document.validateRange(
+                            new vscode.Range(lineNumber, 0, lineNumber, editor1.document.lineAt(lineNumber).text.length)
+                        );
+                        const range2 = editor2.document.validateRange(
+                            new vscode.Range(lineNumber, 0, lineNumber, editor2.document.lineAt(lineNumber).text.length)
+                        );
+
+                        editor1.setDecorations(hoverDecorationType, [range1]);
+                        editor2.setDecorations(hoverDecorationType, [range2]);
+                    });
+
+                    context.subscriptions.push(selectionChangeDisposable);
                 }
             }
         })
@@ -397,10 +446,16 @@ export function deactivate() {
     if (saveListenerDisposable) {
         saveListenerDisposable.dispose();
     }
+    if (selectionChangeDisposable) {
+        selectionChangeDisposable.dispose();
+    }
     if (redDecorationType) { // Dispose decoration types
         redDecorationType.dispose();
     }
     if (yellowDecorationType) {
         yellowDecorationType.dispose();
+    }
+    if (hoverDecorationType) {
+        hoverDecorationType.dispose();
     }
 }
