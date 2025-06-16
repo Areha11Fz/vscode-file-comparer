@@ -1,71 +1,47 @@
-# file-comparer README
+# File Comparer Extension
 
-This is the README for your extension "file-comparer". After writing up a brief description, we recommend including the following sections.
+This Visual Studio Code extension provides a side-by-side view for comparing two files, with synchronized scrolling and intelligent line highlighting.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+*   **Side-by-Side View:** Select two files using the dedicated "File Comparer" view in the Activity Bar and click "Compare Files" to open them next to each other.
+*   **Synchronized Scrolling:** When scrolling in one editor pane, the other pane automatically scrolls to the corresponding position.
+*   **Difference Highlighting:** Lines are highlighted based on differences in their first word (ignoring leading whitespace):
+    *   **Yellow Highlight:** Applied if the first words differ, and *neither* word is a standard Protobuf scalar data type (e.g., `MyCustomType` vs `AnotherCustomType`).
+    *   **Red Highlight:** Applied if the first words differ, and *at least one* word is a standard Protobuf scalar data type (e.g., `string` vs `int32`, or `MyCustomType` vs `bool`), or if one file has a line where the other doesn't.
+*   **Automatic Updates:** Highlighting automatically refreshes when either of the compared files is edited or saved.
 
-For example if there is an image subfolder under your extension project workspace:
+## How to Use
 
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+1.  Open the "File Comparer" view from the Activity Bar (or use the Command Palette: `View: Show File Comparer`).
+2.  Click "Select File 1" and choose the first file.
+3.  Click "Select File 2" and choose the second file.
+4.  Click "Compare Files".
+5.  The files will open side-by-side with synchronized scrolling and highlighting enabled.
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+No external requirements or dependencies.
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+This extension does not add any VS Code settings.
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+*   Highlighting is based only on the *first word* of each line. More complex diffing is not performed.
+*   The list of recognized Protobuf types is limited to common scalar types.
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+*   Initial release.
+*   Side-by-side file comparison view.
+*   Synchronized scrolling between compared files.
+*   Line highlighting based on first-word differences (Protobuf type aware).
+*   Automatic highlighting updates on file edit/save.
 
 ---
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
 **Enjoy!**

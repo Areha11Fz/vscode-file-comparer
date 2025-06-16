@@ -16,17 +16,21 @@ const protobufTypes = new Set([
     'bool', 'string', 'bytes'
 ]);
 
-// Define the decoration type for RED highlighting (completely different, non-type)
+// Update the red highlight options
 const redHighlightOptions: vscode.DecorationRenderOptions = {
     backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background
     isWholeLine: true,
+    overviewRulerColor: 'rgba(255, 0, 0, 0.8)',
+    overviewRulerLane: vscode.OverviewRulerLane.Right
 };
 
-// Define the decoration type for YELLOW highlighting (potential type mismatch) // Added
-const yellowHighlightOptions: vscode.DecorationRenderOptions = { // Added
-    backgroundColor: 'rgba(255, 255, 0, 0.3)', // Yellow background // Added
-    isWholeLine: true, // Added
-}; // Added
+// Update the yellow highlight options
+const yellowHighlightOptions: vscode.DecorationRenderOptions = {
+    backgroundColor: 'rgba(255, 255, 0, 0.3)', // Yellow background
+    isWholeLine: true,
+    overviewRulerColor: 'rgba(255, 255, 0, 0.8)',
+    overviewRulerLane: vscode.OverviewRulerLane.Center
+};
 
 // Function to perform the comparison and apply highlighting
 function updateDiffHighlighting() {
@@ -70,9 +74,12 @@ function updateDiffHighlighting() {
 
     // Apply decorations (clear previous of the specific type first)
     editor1.setDecorations(redDecorationType, redDecorations1);
-    editor1.setDecorations(yellowDecorationType, yellowDecorations1);
     editor2.setDecorations(redDecorationType, redDecorations2);
-    editor2.setDecorations(yellowDecorationType, yellowDecorations2);
+
+    if (yellowDecorationEnabled) {
+        editor1.setDecorations(yellowDecorationType, yellowDecorations1);
+        editor2.setDecorations(yellowDecorationType, yellowDecorations2);
+    }
 }
 
 
@@ -174,6 +181,8 @@ class FileComparerViewProvider implements vscode.WebviewViewProvider {
         return { file1: this._file1, file2: this._file2 };
     }
 }
+
+let yellowDecorationEnabled: boolean = true;
 
 export function activate(context: vscode.ExtensionContext) {
     const provider = new FileComparerViewProvider(context.extensionUri);
@@ -354,6 +363,20 @@ export function activate(context: vscode.ExtensionContext) {
                     });
                     context.subscriptions.push(saveListenerDisposable);
                 }
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('file-comparer.toggleYellowHighlight', () => {
+            yellowDecorationEnabled = !yellowDecorationEnabled;
+            if (!yellowDecorationEnabled && editor1 && editor2 && yellowDecorationType) {
+                // Clear yellow decorations when disabled
+                editor1.setDecorations(yellowDecorationType, []);
+                editor2.setDecorations(yellowDecorationType, []);
+            } else {
+                // Re-run comparison to restore highlights
+                updateDiffHighlighting();
             }
         })
     );

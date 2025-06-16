@@ -2,7 +2,7 @@
   "name": "file-comparer",
   "displayName": "File Comparer",
   "description": "Compare two files side by side",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.98.0"
   },
@@ -13,18 +13,22 @@
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [{
-        "id": "file-comparer",
-        "title": "File Comparer",
-        "icon": "$(compare-changes)"
-      }]
+      "activitybar": [
+        {
+          "id": "file-comparer",
+          "title": "File Comparer",
+          "icon": "$(compare-changes)"
+        }
+      ]
     },
     "views": {
-      "file-comparer": [{
-        "id": "fileComparerView",
-        "name": "File Comparer",
-        "type": "webview"
-      }]
+      "file-comparer": [
+        {
+          "id": "fileComparerView",
+          "name": "File Comparer",
+          "type": "webview"
+        }
+      ]
     },
     "commands": [
       {
@@ -42,6 +46,11 @@
       {
         "command": "file-comparer.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "file-comparer.toggleYellowHighlight",
+        "title": "Toggle Yellow Highlight",
+        "category": "File Comparer"
       }
     ]
   },
@@ -63,5 +72,10 @@
     "typescript": "^5.8.2",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/areha11fz/comparer.git"
   }
 }
